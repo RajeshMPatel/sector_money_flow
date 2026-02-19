@@ -27,54 +27,97 @@ SECTORS = {
     'XHB': 'Homebuilders',
     'XRT': 'Retail',
     'KRE': 'Regional Banks',
-    'IYT': 'Transportation'
+    'IYT': 'Transportation',
+    'TLT': '20+ Year Treasury Bonds',
+    'AGG': 'Core US Aggregate Bonds',
+    'LQD': 'Investment Grade Corp Bonds',
+    'GLD': 'Gold (Physical)'
 }
 TICKERS = list(SECTORS.keys()) + ['SPY']
 
-def fetch_yahoo_finance(symbol, range_val="3mo", interval="1d"):
-    """Fetch data from Yahoo Finance direct API."""
-    url = f"https://query2.finance.yahoo.com/v8/finance/chart/{symbol}?interval={interval}&range={range_val}"
+# Directory to store our incremental CSV files
+DATA_DIR = "data"
+os.makedirs(DATA_DIR, exist_ok=True)
+
+def fetch_yahoo_finance(symbol):
+    """Fetch data from Yahoo Finance incrementally and cache locally."""
+    file_path = os.path.join(DATA_DIR, f"{symbol}.csv")
+    
+    existing_df = pd.DataFrame()
+    if os.path.exists(file_path):
+        existing_df = pd.read_csv(file_path, index_col='date', parse_dates=['date'])
+        # If we have local data, we just need the last 5 days to update the current live candle 
+        # and any missing recent days.
+        range_val = "5d" 
+    else:
+        # If no local data exists, fetch 1 year to build a solid history
+        range_val = "1y"
+        
+    url = f"https://query2.finance.yahoo.com/v8/finance/chart/{symbol}?interval=1d&range={range_val}"
     headers = {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
     }
     
-    response = requests.get(url, headers=headers)
-    if response.status_code != 200:
-        raise Exception(f"Yahoo API returned {response.status_code} for {symbol}")
+    try:
+        response = requests.get(url, headers=headers, timeout=10)
+        if response.status_code == 200:
+            data = response.json()
+            result = data.get('chart', {}).get('result')
+            if result:
+                result = result[0]
+                timestamps = result.get('timestamp', [])
+                indicators = result.get('indicators', {}).get('quote', [{}])[0]
+                
+                if timestamps and indicators:
+                    new_df = pd.DataFrame({
+                        'date': [pd.to_datetime(t, unit='s').date() for t in timestamps],
+                        'open': indicators.get('open', []),
+                        'high': indicators.get('high', []),
+                        'low': indicators.get('low', []),
+                        'close': indicators.get('close', []),
+                        'volume': indicators.get('volume', [])
+                    })
+                    # Convert date to datetime for consistent index mapping
+                    new_df['date'] = pd.to_datetime(new_df['date'])
+                    new_df.set_index('date', inplace=True)
+                    new_df.dropna(inplace=True)
+                    
+                    if not existing_df.empty:
+                        # Combine existing data with new data
+                        combined = pd.concat([existing_df, new_df])
+                        # Keep the last entry for each date (the most recent fetch overwrites the older partial day)
+                        combined = combined[~combined.index.duplicated(keep='last')]
+                        combined.sort_index(inplace=True)
+                        df = combined
+                    else:
+                        df = new_df
+                        
+                    # Filter out today's live data to ensure we only use fully formed End-Of-Day candles
+                    today = pd.Timestamp(datetime.date.today())
+                    df = df[df.index < today]
+                        
+                    # Save back to local CSV cache
+                    df.to_csv(file_path)
+                    return df
+    except Exception as e:
+        print(f"Error fetching live data for {symbol}: {e}")
         
-    data = response.json()
-    if not data.get('chart', {}).get('result'):
-        raise Exception(f"No result found in Yahoo API response for {symbol}")
+    # Fallback: if live fetch fails completely, return cached data if we have it
+    if not existing_df.empty:
+        print(f"Using cached data for {symbol} due to fetch error.")
+        today = pd.Timestamp(datetime.date.today())
+        return existing_df[existing_df.index < today]
         
-    result = data['chart']['result'][0]
-    timestamps = result.get('timestamp', [])
-    indicators = result.get('indicators', {}).get('quote', [{}])[0]
-    
-    if not timestamps or not indicators:
-        raise Exception(f"Missing data in Yahoo API response for {symbol}")
-        
-    df = pd.DataFrame({
-        'date': [pd.to_datetime(t, unit='s').date() for t in timestamps],
-        'open': indicators.get('open', []),
-        'high': indicators.get('high', []),
-        'low': indicators.get('low', []),
-        'close': indicators.get('close', []),
-        'volume': indicators.get('volume', [])
-    })
-    
-    df.set_index('date', inplace=True)
-    # Drop rows with NaN values (e.g. current day still trading might have partial data)
-    df.dropna(inplace=True)
-    
-    return df
+    raise Exception(f"Failed to fetch data for {symbol} and no cache exists.")
 
 def get_fred_data():
-    """Fetches macro data from FRED API"""
+    """Fetches macro data from FRED API incrementally."""
     api_key = os.environ.get('FRED_API_KEY')
     if not api_key:
         return {"error": "FRED_API_KEY not found in environment"}
+        
+    file_path = os.path.join(DATA_DIR, "macro_cache.csv")
     
-    # Required indicators
     series_ids = {
         'DGS2': '2Y Treasury Yield',
         'DGS10': '10Y Treasury Yield',
@@ -99,12 +142,22 @@ def get_fred_data():
                     macro_data.append({
                         "indicator": name,
                         "value": val,
-                        "date": date
+                        "date": date,
+                        "series": series
                     })
         except Exception as e:
             print(f"Error fetching FRED {series}: {e}")
             
-    return macro_data
+    # If we successfully fetched fresh data, save it to cache
+    if macro_data:
+        pd.DataFrame(macro_data).to_csv(file_path, index=False)
+        return macro_data
+        
+    # If the fetch failed (e.g. rate limit), try loading from our local CSV cache
+    if os.path.exists(file_path):
+        return pd.read_csv(file_path).to_dict('records')
+        
+    return []
 
 @app.get("/api/data")
 def get_data():
@@ -119,9 +172,14 @@ def get_data():
         try:
             sector_df = fetch_yahoo_finance(symbol)
             
-            # Align dates
+            # Align dates using an inner join to only compare dates where both SPY and the sector traded
             aligned = pd.merge(sector_df, spy_df, left_index=True, right_index=True, suffixes=('', '_spy'))
             
+            # Ensure we have enough data (at least 21 days for the window)
+            if len(aligned) < 22:
+                print(f"Not enough data for {symbol}")
+                continue
+                
             # 1. Calculate Chaikin Money Flow (CMF) - 21 periods
             high_low = aligned['high'] - aligned['low']
             high_low = high_low.replace(0, 0.001) # Avoid div by zero
@@ -136,7 +194,7 @@ def get_data():
             rs_line = aligned['close'] / aligned['close_spy']
             
             current_rs = rs_line.iloc[-1]
-            past_rs = rs_line.iloc[-21] # 20 trading days ago (roughly 21 index offset)
+            past_rs = rs_line.iloc[-21] # 20 trading days ago
             rs_pct_change = ((current_rs - past_rs) / past_rs) * 100
             
             if current_cmf > 0 and rs_pct_change > 0:
