@@ -93,11 +93,11 @@
             <table class="min-w-full divide-y divide-slate-700">
                 <thead>
                     <tr>
-                        <th class="px-6 py-3 text-left text-xs font-medium text-slate-400 uppercase tracking-wider">Sector</th>
-                        <th class="px-6 py-3 text-left text-xs font-medium text-slate-400 uppercase tracking-wider">Symbol</th>
-                        <th class="px-6 py-3 text-left text-xs font-medium text-slate-400 uppercase tracking-wider">21-Day CMF</th>
-                        <th class="px-6 py-3 text-left text-xs font-medium text-slate-400 uppercase tracking-wider">20-Day RS %</th>
-                        <th class="px-6 py-3 text-left text-xs font-medium text-slate-400 uppercase tracking-wider">Status</th>
+                        <th onclick="sortTable('name')" class="px-6 py-3 text-left text-xs font-medium text-slate-400 uppercase tracking-wider cursor-pointer hover:bg-slate-700 group">Sector <span id="sort-name" class="opacity-0 group-hover:opacity-50 inline-block w-4 text-center"></span></th>
+                        <th onclick="sortTable('symbol')" class="px-6 py-3 text-left text-xs font-medium text-slate-400 uppercase tracking-wider cursor-pointer hover:bg-slate-700 group">Symbol <span id="sort-symbol" class="opacity-0 group-hover:opacity-50 inline-block w-4 text-center"></span></th>
+                        <th onclick="sortTable('cmf')" class="px-6 py-3 text-left text-xs font-medium text-slate-400 uppercase tracking-wider cursor-pointer hover:bg-slate-700 group">21-Day CMF <span id="sort-cmf" class="opacity-0 group-hover:opacity-50 inline-block w-4 text-center"></span></th>
+                        <th onclick="sortTable('rs_momentum')" class="px-6 py-3 text-left text-xs font-medium text-slate-400 uppercase tracking-wider cursor-pointer hover:bg-slate-700 group">20-Day RS % <span id="sort-rs_momentum" class="opacity-0 group-hover:opacity-50 inline-block w-4 text-center"></span></th>
+                        <th onclick="sortTable('quadrant')" class="px-6 py-3 text-left text-xs font-medium text-slate-400 uppercase tracking-wider cursor-pointer hover:bg-slate-700 group">Status <span id="sort-quadrant" class="opacity-0 group-hover:opacity-50 inline-block w-4 text-center"></span></th>
                     </tr>
                 </thead>
                 <tbody id="data-table" class="divide-y divide-slate-700 text-sm">
@@ -108,6 +108,9 @@
     </div>
 
     <script>
+        let sectorsData = [];
+        let currentSort = { column: 'name', asc: true };
+
         const quadrantLines = {
             id: 'quadrantLines',
             beforeDraw: (chart) => {
@@ -173,8 +176,9 @@
                 }
 
                 if (data.sectors && data.sectors.length > 0) {
-                    renderChart(data.sectors);
-                    renderTable(data.sectors);
+                    sectorsData = data.sectors;
+                    renderChart(sectorsData);
+                    renderTable();
                 } else {
                     alert("Error loading sector data. Check server logs.");
                 }
@@ -187,10 +191,48 @@
             }
         }
 
-        function renderTable(sectors) {
+        function sortTable(column) {
+            if (currentSort.column === column) {
+                currentSort.asc = !currentSort.asc;
+            } else {
+                currentSort.column = column;
+                currentSort.asc = true;
+            }
+            
+            sectorsData.sort((a, b) => {
+                let valA = a[column];
+                let valB = b[column];
+                
+                if (typeof valA === 'string') valA = valA.toLowerCase();
+                if (typeof valB === 'string') valB = valB.toLowerCase();
+                
+                if (valA < valB) return currentSort.asc ? -1 : 1;
+                if (valA > valB) return currentSort.asc ? 1 : -1;
+                return 0;
+            });
+            
+            renderTable();
+        }
+
+        function renderTable() {
+            // Update sort indicators
+            ['name', 'symbol', 'cmf', 'rs_momentum', 'quadrant'].forEach(col => {
+                const el = document.getElementById(`sort-${col}`);
+                if (el) {
+                    el.className = 'opacity-0 group-hover:opacity-50 inline-block w-4 text-center transition-opacity';
+                    el.innerHTML = '↕';
+                }
+            });
+            
+            const activeSortEl = document.getElementById(`sort-${currentSort.column}`);
+            if (activeSortEl) {
+                activeSortEl.className = 'opacity-100 inline-block w-4 text-center text-blue-400';
+                activeSortEl.innerHTML = currentSort.asc ? '↑' : '↓';
+            }
+
             const tbody = document.getElementById('data-table');
             let html = '';
-            sectors.forEach(s => {
+            sectorsData.forEach(s => {
                 const cmfClass = s.cmf > 0 ? 'text-emerald-400' : 'text-red-400';
                 const rsClass = s.rs_momentum > 0 ? 'text-emerald-400' : 'text-red-400';
                 
