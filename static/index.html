@@ -1,0 +1,295 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Institutional Sector Rotation</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        body {
+            background-color: #0f172a;
+            color: #f8fafc;
+        }
+    </style>
+</head>
+<body class="min-h-screen flex flex-col items-center py-10 px-4 sm:px-6 lg:px-8">
+    
+    <div class="max-w-7xl w-full">
+        
+        <header class="mb-10 text-center">
+            <h1 class="text-4xl font-extrabold tracking-tight sm:text-5xl text-transparent bg-clip-text bg-gradient-to-r from-blue-400 to-emerald-400">
+                Institutional Sector Rotation
+            </h1>
+            <p class="mt-4 max-w-2xl text-xl mx-auto text-slate-400">
+                Track smart money flows across S&P 500 sectors using Chaikin Money Flow & Relative Strength.
+            </p>
+        </header>
+
+        <main class="grid grid-cols-1 lg:grid-cols-3 gap-8">
+            <!-- Left Column: Chart -->
+            <div class="lg:col-span-2 bg-slate-800 rounded-2xl shadow-xl border border-slate-700 p-6 relative">
+                
+                <div id="loading" class="absolute inset-0 z-10 flex flex-col items-center justify-center bg-slate-800/80 rounded-2xl backdrop-blur-sm">
+                    <div class="w-12 h-12 border-4 border-emerald-400 border-t-transparent rounded-full animate-spin"></div>
+                    <p class="mt-4 text-emerald-400 font-medium tracking-wide">Fetching market data...</p>
+                </div>
+
+                <div class="h-[600px] w-full">
+                    <canvas id="rotationChart"></canvas>
+                </div>
+            </div>
+
+            <!-- Right Column: Data & Legends -->
+            <div class="flex flex-col space-y-6">
+                <!-- Macro Card -->
+                <div class="bg-slate-800 rounded-2xl shadow-xl border border-slate-700 p-6 flex-1">
+                    <h3 class="text-lg font-semibold text-slate-200 border-b border-slate-700 pb-3 mb-4">FRED Macro Indicators</h3>
+                    <div id="macro-data" class="space-y-3 text-sm">
+                        <!-- Macro data will be populated here -->
+                    </div>
+                </div>
+
+                <!-- Quadrant Guide -->
+                <div class="bg-slate-800 rounded-2xl shadow-xl border border-slate-700 p-6">
+                    <h3 class="text-lg font-semibold text-slate-200 border-b border-slate-700 pb-3 mb-4">How to read this chart</h3>
+                    
+                    <div class="space-y-4">
+                        <div class="flex items-start">
+                            <span class="inline-block w-3 h-3 rounded-full bg-emerald-500 mt-1 mr-3 flex-shrink-0 shadow-[0_0_8px_rgba(16,185,129,0.6)]"></span>
+                            <div>
+                                <p class="text-slate-200 font-medium">Leading (Top Right)</p>
+                                <p class="text-slate-400 text-sm">Outperforming SPY + Accumulation. Smart money is heavily allocated here.</p>
+                            </div>
+                        </div>
+                        <div class="flex items-start">
+                            <span class="inline-block w-3 h-3 rounded-full bg-orange-400 mt-1 mr-3 flex-shrink-0 shadow-[0_0_8px_rgba(251,146,60,0.6)]"></span>
+                            <div>
+                                <p class="text-slate-200 font-medium">Improving (Top Left)</p>
+                                <p class="text-slate-400 text-sm">Underperforming SPY but showing Accumulation. Smart money is buying the dip.</p>
+                            </div>
+                        </div>
+                        <div class="flex items-start">
+                            <span class="inline-block w-3 h-3 rounded-full bg-yellow-400 mt-1 mr-3 flex-shrink-0 shadow-[0_0_8px_rgba(250,204,21,0.6)]"></span>
+                            <div>
+                                <p class="text-slate-200 font-medium">Deteriorating (Bottom Right)</p>
+                                <p class="text-slate-400 text-sm">Outperforming SPY but showing Distribution. Smart money is taking profits.</p>
+                            </div>
+                        </div>
+                        <div class="flex items-start">
+                            <span class="inline-block w-3 h-3 rounded-full bg-red-500 mt-1 mr-3 flex-shrink-0 shadow-[0_0_8px_rgba(239,68,68,0.6)]"></span>
+                            <div>
+                                <p class="text-slate-200 font-medium">Weakening (Bottom Left)</p>
+                                <p class="text-slate-400 text-sm">Underperforming SPY + Distribution. Smart money is abandoning this sector.</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </main>
+
+        <section class="mt-8 bg-slate-800 rounded-2xl shadow-xl border border-slate-700 p-6 overflow-x-auto">
+            <h3 class="text-lg font-semibold text-slate-200 border-b border-slate-700 pb-3 mb-4">Raw Data (Daily Close)</h3>
+            <table class="min-w-full divide-y divide-slate-700">
+                <thead>
+                    <tr>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-slate-400 uppercase tracking-wider">Sector</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-slate-400 uppercase tracking-wider">Symbol</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-slate-400 uppercase tracking-wider">21-Day CMF</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-slate-400 uppercase tracking-wider">20-Day RS %</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-slate-400 uppercase tracking-wider">Status</th>
+                    </tr>
+                </thead>
+                <tbody id="data-table" class="divide-y divide-slate-700 text-sm">
+                </tbody>
+            </table>
+        </section>
+
+    </div>
+
+    <script>
+        const quadrantLines = {
+            id: 'quadrantLines',
+            beforeDraw: (chart) => {
+                const { ctx, chartArea: { top, bottom, left, right }, scales: { x, y } } = chart;
+                ctx.save();
+                ctx.strokeStyle = '#475569';
+                ctx.lineWidth = 2;
+                ctx.setLineDash([5, 5]);
+
+                const yZero = y.getPixelForValue(0);
+                if (yZero >= top && yZero <= bottom) {
+                    ctx.beginPath();
+                    ctx.moveTo(left, yZero);
+                    ctx.lineTo(right, yZero);
+                    ctx.stroke();
+                }
+
+                const xZero = x.getPixelForValue(0);
+                if (xZero >= left && xZero <= right) {
+                    ctx.beginPath();
+                    ctx.moveTo(xZero, top);
+                    ctx.lineTo(xZero, bottom);
+                    ctx.stroke();
+                }
+                ctx.restore();
+            }
+        };
+
+        Chart.register(quadrantLines);
+
+        async function init() {
+            try {
+                const response = await fetch('/api/data');
+                const data = await response.json();
+
+                document.getElementById('loading').style.display = 'none';
+
+                const macroContainer = document.getElementById('macro-data');
+                if (data.macro && Array.isArray(data.macro)) {
+                    if (data.macro.length === 0) {
+                        macroContainer.innerHTML = '<p class="text-slate-400">No macro data available. Ensure FRED_API_KEY is correct.</p>';
+                    } else {
+                        let html = '';
+                        data.macro.forEach(item => {
+                            html += `
+                                <div class="flex justify-between items-center border-b border-slate-700/50 pb-2 last:border-0">
+                                    <div class="flex flex-col">
+                                        <span class="font-medium text-slate-300">${item.indicator}</span>
+                                        <span class="text-xs text-slate-500">${item.date}</span>
+                                    </div>
+                                    <span class="text-lg font-bold text-blue-400">${item.value !== '.' ? item.value : 'N/A'}</span>
+                                </div>
+                            `;
+                        });
+                        macroContainer.innerHTML = html;
+                    }
+                } else if (data.macro && data.macro.error) {
+                    macroContainer.innerHTML = `
+                        <p class="text-amber-500 text-sm">Macro data unavailable (${data.macro.error}).</p>
+                    `;
+                } else {
+                     macroContainer.innerHTML = '<p class="text-slate-400">Loading macro indicators...</p>';
+                }
+
+                if (data.sectors && data.sectors.length > 0) {
+                    renderChart(data.sectors);
+                    renderTable(data.sectors);
+                } else {
+                    alert("Error loading sector data. Check server logs.");
+                }
+
+            } catch (err) {
+                console.error("Failed to fetch data:", err);
+                document.getElementById('loading').innerHTML = `
+                    <p class="text-red-500 font-medium">Failed to load data. Ensure server is running.</p>
+                `;
+            }
+        }
+
+        function renderTable(sectors) {
+            const tbody = document.getElementById('data-table');
+            let html = '';
+            sectors.forEach(s => {
+                const cmfClass = s.cmf > 0 ? 'text-emerald-400' : 'text-red-400';
+                const rsClass = s.rs_momentum > 0 ? 'text-emerald-400' : 'text-red-400';
+                
+                html += `
+                    <tr class="hover:bg-slate-700/50 transition-colors">
+                        <td class="px-6 py-4 whitespace-nowrap text-slate-200 font-medium">${s.name}</td>
+                        <td class="px-6 py-4 whitespace-nowrap text-slate-400">${s.symbol}</td>
+                        <td class="px-6 py-4 whitespace-nowrap font-mono ${cmfClass}">${s.cmf > 0 ? '+' : ''}${s.cmf}</td>
+                        <td class="px-6 py-4 whitespace-nowrap font-mono ${rsClass}">${s.rs_momentum > 0 ? '+' : ''}${s.rs_momentum}%</td>
+                        <td class="px-6 py-4 whitespace-nowrap">
+                            <span class="px-3 py-1 inline-flex text-xs leading-5 font-semibold rounded-full 
+                                ${s.color === 'green' ? 'bg-emerald-900 text-emerald-300' : 
+                                  s.color === 'red' ? 'bg-red-900 text-red-300' : 
+                                  s.color === 'orange' ? 'bg-orange-900 text-orange-300' : 
+                                  'bg-yellow-900 text-yellow-300'}">
+                                ${s.quadrant}
+                            </span>
+                        </td>
+                    </tr>
+                `;
+            });
+            tbody.innerHTML = html;
+        }
+
+        function renderChart(sectors) {
+            const ctx = document.getElementById('rotationChart').getContext('2d');
+            
+            const datasets = sectors.map(s => {
+                let ptColor = '#e2e8f0';
+                if(s.color === 'green') ptColor = '#10b981';
+                else if(s.color === 'red') ptColor = '#ef4444';
+                else if(s.color === 'orange') ptColor = '#fb923c';
+                else if(s.color === 'yellow') ptColor = '#facc15';
+
+                return {
+                    label: s.symbol,
+                    data: [{ x: s.rs_momentum, y: s.cmf, name: s.name }],
+                    backgroundColor: ptColor,
+                    borderColor: ptColor,
+                    borderWidth: 2,
+                    pointRadius: 8,
+                    pointHoverRadius: 10,
+                };
+            });
+
+            new Chart(ctx, {
+                type: 'scatter',
+                data: { datasets: datasets },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    color: '#94a3b8',
+                    plugins: {
+                        legend: {
+                            display: false,
+                        },
+                        tooltip: {
+                            backgroundColor: 'rgba(15, 23, 42, 0.9)',
+                            titleColor: '#f8fafc',
+                            bodyColor: '#cbd5e1',
+                            borderColor: '#334155',
+                            borderWidth: 1,
+                            padding: 12,
+                            displayColors: true,
+                            callbacks: {
+                                label: function(context) {
+                                    const pt = context.raw;
+                                    return `${pt.name} (${context.dataset.label}): RS ${pt.x > 0 ? '+':''}${pt.x}%, CMF ${pt.y > 0 ? '+':''}${pt.y}`;
+                                }
+                            }
+                        }
+                    },
+                    scales: {
+                        x: {
+                            title: {
+                                display: true,
+                                text: 'Relative Strength Momentum (20-Day %)',
+                                color: '#cbd5e1',
+                                font: { size: 14, weight: 'bold' }
+                            },
+                            grid: { color: 'rgba(51, 65, 85, 0.5)' },
+                            ticks: { color: '#94a3b8' }
+                        },
+                        y: {
+                            title: {
+                                display: true,
+                                text: 'Chaikin Money Flow (21-Day)',
+                                color: '#cbd5e1',
+                                font: { size: 14, weight: 'bold' }
+                            },
+                            grid: { color: 'rgba(51, 65, 85, 0.5)' },
+                            ticks: { color: '#94a3b8' }
+                        }
+                    }
+                }
+            });
+        }
+
+        init();
+    </script>
+</body>
+</html>
