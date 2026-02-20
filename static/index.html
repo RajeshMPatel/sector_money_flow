@@ -88,28 +88,43 @@
             </div>
         </main>
 
-        <section class="mt-8 bg-slate-800 rounded-2xl shadow-xl border border-slate-700 p-6 overflow-x-auto">
-            <h3 class="text-lg font-semibold text-slate-200 border-b border-slate-700 pb-3 mb-4">Raw Data (Daily Close)</h3>
-            <table class="min-w-full divide-y divide-slate-700">
-                <thead>
-                    <tr>
-                        <th onclick="sortTable('name')" class="px-6 py-3 text-left text-xs font-medium text-slate-400 uppercase tracking-wider cursor-pointer hover:bg-slate-700 group">Sector <span id="sort-name" class="opacity-0 group-hover:opacity-50 inline-block w-4 text-center"></span></th>
-                        <th onclick="sortTable('symbol')" class="px-6 py-3 text-left text-xs font-medium text-slate-400 uppercase tracking-wider cursor-pointer hover:bg-slate-700 group">Symbol <span id="sort-symbol" class="opacity-0 group-hover:opacity-50 inline-block w-4 text-center"></span></th>
-                        <th onclick="sortTable('cmf')" class="px-6 py-3 text-left text-xs font-medium text-slate-400 uppercase tracking-wider cursor-pointer hover:bg-slate-700 group">21-Day CMF <span id="sort-cmf" class="opacity-0 group-hover:opacity-50 inline-block w-4 text-center"></span></th>
-                        <th onclick="sortTable('rs_momentum')" class="px-6 py-3 text-left text-xs font-medium text-slate-400 uppercase tracking-wider cursor-pointer hover:bg-slate-700 group">20-Day RS % <span id="sort-rs_momentum" class="opacity-0 group-hover:opacity-50 inline-block w-4 text-center"></span></th>
-                        <th onclick="sortTable('quadrant')" class="px-6 py-3 text-left text-xs font-medium text-slate-400 uppercase tracking-wider cursor-pointer hover:bg-slate-700 group">Status <span id="sort-quadrant" class="opacity-0 group-hover:opacity-50 inline-block w-4 text-center"></span></th>
-                    </tr>
-                </thead>
-                <tbody id="data-table" class="divide-y divide-slate-700 text-sm">
-                </tbody>
-            </table>
+        <!-- Educational Section -->
+        <section class="mt-8 bg-slate-800 rounded-2xl shadow-xl border border-slate-700 p-6">
+            <details class="group">
+                <summary class="flex justify-between items-center font-medium cursor-pointer list-none text-slate-200 hover:text-blue-400 transition-colors">
+                    <span class="text-lg font-semibold">How to Read CMF & RS (Click to Expand)</span>
+                    <span class="transition group-open:rotate-180">
+                        <svg fill="none" height="24" shape-rendering="geometricPrecision" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" viewBox="0 0 24 24" width="24"><path d="M6 9l6 6 6-6"></path></svg>
+                    </span>
+                </summary>
+                <div class="text-slate-400 mt-4 text-sm space-y-4 border-t border-slate-700 pt-4">
+                    <p><strong class="text-slate-200">21-Day CMF (Chaikin Money Flow)</strong> measures <strong>Volume</strong> to track where institutional "smart money" is flowing.</p>
+                    <ul class="list-disc pl-5 space-y-1">
+                        <li><strong class="text-emerald-400">Positive (> 0):</strong> Accumulation. Institutions are quietly buying. > +0.10 is strong, > +0.20 is extreme.</li>
+                        <li><strong class="text-red-400">Negative (< 0):</strong> Distribution. Institutions are selling. < -0.10 is strong, < -0.20 is extreme.</li>
+                    </ul>
+                    <p><strong class="text-slate-200">20-Day RS % (Relative Strength)</strong> measures <strong>Price momentum</strong> compared to the S&P 500 (SPY).</p>
+                    <ul class="list-disc pl-5 space-y-1">
+                        <li><strong class="text-emerald-400">Positive (> 0%):</strong> Outperforming the broader market.</li>
+                        <li><strong class="text-red-400">Negative (< 0%):</strong> Underperforming the broader market.</li>
+                    </ul>
+                    <div class="bg-blue-900/20 border border-blue-800 rounded p-3">
+                        <p class="text-blue-300 italic">Cheat Code: Watch for divergences. If a sector is crashing but CMF is positive, institutions are buying the dip. If a sector is hitting highs but CMF is negative, a trap is forming and institutions are selling into the rally.</p>
+                    </div>
+                </div>
+            </details>
         </section>
+
+        <!-- Tables Container -->
+        <div id="tables-container" class="mt-8 space-y-8">
+            <!-- Tables will be generated here -->
+        </div>
 
     </div>
 
     <script>
         let sectorsData = [];
-        let currentSort = { column: 'name', asc: true };
+        let currentSort = { column: 'name', asc: true, group: null };
 
         const quadrantLines = {
             id: 'quadrantLines',
@@ -178,7 +193,7 @@
                 if (data.sectors && data.sectors.length > 0) {
                     sectorsData = data.sectors;
                     renderChart(sectorsData);
-                    renderTable();
+                    renderTables();
                 } else {
                     alert("Error loading sector data. Check server logs.");
                 }
@@ -191,12 +206,13 @@
             }
         }
 
-        function sortTable(column) {
-            if (currentSort.column === column) {
+        function sortTable(column, groupName) {
+            if (currentSort.column === column && currentSort.group === groupName) {
                 currentSort.asc = !currentSort.asc;
             } else {
                 currentSort.column = column;
                 currentSort.asc = true;
+                currentSort.group = groupName;
             }
             
             sectorsData.sort((a, b) => {
@@ -211,50 +227,81 @@
                 return 0;
             });
             
-            renderTable();
+            renderTables();
         }
 
-        function renderTable() {
-            // Update sort indicators
-            ['name', 'symbol', 'cmf', 'rs_momentum', 'quadrant'].forEach(col => {
-                const el = document.getElementById(`sort-${col}`);
-                if (el) {
-                    el.className = 'opacity-0 group-hover:opacity-50 inline-block w-4 text-center transition-opacity';
-                    el.innerHTML = '↕';
-                }
-            });
-            
-            const activeSortEl = document.getElementById(`sort-${currentSort.column}`);
-            if (activeSortEl) {
-                activeSortEl.className = 'opacity-100 inline-block w-4 text-center text-blue-400';
-                activeSortEl.innerHTML = currentSort.asc ? '↑' : '↓';
-            }
-
-            const tbody = document.getElementById('data-table');
+        function renderTables() {
+            const container = document.getElementById('tables-container');
             let html = '';
-            sectorsData.forEach(s => {
-                const cmfClass = s.cmf > 0 ? 'text-emerald-400' : 'text-red-400';
-                const rsClass = s.rs_momentum > 0 ? 'text-emerald-400' : 'text-red-400';
+            
+            // Get unique groups preserving order from python data (which naturally groups them if we don't shuffle too much initially, or we can hardcode)
+            const groups = [...new Set(sectorsData.map(s => s.group))];
+            
+            groups.forEach(group => {
+                const groupData = sectorsData.filter(s => s.group === group);
+                const safeGroup = group.replace(/\s+/g, '').replace(/[^a-zA-Z0-9]/g, '');
                 
                 html += `
-                    <tr class="hover:bg-slate-700/50 transition-colors">
-                        <td class="px-6 py-4 whitespace-nowrap text-slate-200 font-medium">${s.name}</td>
-                        <td class="px-6 py-4 whitespace-nowrap text-slate-400">${s.symbol}</td>
-                        <td class="px-6 py-4 whitespace-nowrap font-mono ${cmfClass}">${s.cmf > 0 ? '+' : ''}${s.cmf}</td>
-                        <td class="px-6 py-4 whitespace-nowrap font-mono ${rsClass}">${s.rs_momentum > 0 ? '+' : ''}${s.rs_momentum}%</td>
-                        <td class="px-6 py-4 whitespace-nowrap">
-                            <span class="px-3 py-1 inline-flex text-xs leading-5 font-semibold rounded-full 
-                                ${s.color === 'green' ? 'bg-emerald-900 text-emerald-300' : 
-                                  s.color === 'red' ? 'bg-red-900 text-red-300' : 
-                                  s.color === 'orange' ? 'bg-orange-900 text-orange-300' : 
-                                  'bg-yellow-900 text-yellow-300'}">
-                                ${s.quadrant}
-                            </span>
-                        </td>
-                    </tr>
+                <section class="bg-slate-800 rounded-2xl shadow-xl border border-slate-700 overflow-hidden">
+                    <div class="px-6 py-4 border-b border-slate-700 bg-slate-800/50">
+                        <h3 class="text-xl font-bold text-slate-100">${group}</h3>
+                    </div>
+                    <div class="overflow-x-auto">
+                        <table class="min-w-full divide-y divide-slate-700">
+                            <thead>
+                                <tr>
+                                    <th onclick="sortTable('name', '${group}')" class="px-6 py-3 text-left text-xs font-medium text-slate-400 uppercase tracking-wider cursor-pointer hover:bg-slate-700 group-hover">Asset <span id="sort-name-${safeGroup}" class="opacity-0 inline-block w-4 text-center">↕</span></th>
+                                    <th onclick="sortTable('symbol', '${group}')" class="px-6 py-3 text-left text-xs font-medium text-slate-400 uppercase tracking-wider cursor-pointer hover:bg-slate-700 group-hover">Symbol <span id="sort-symbol-${safeGroup}" class="opacity-0 inline-block w-4 text-center">↕</span></th>
+                                    <th onclick="sortTable('cmf', '${group}')" class="px-6 py-3 text-left text-xs font-medium text-slate-400 uppercase tracking-wider cursor-pointer hover:bg-slate-700 group-hover">21-Day CMF <span id="sort-cmf-${safeGroup}" class="opacity-0 inline-block w-4 text-center">↕</span></th>
+                                    <th onclick="sortTable('rs_momentum', '${group}')" class="px-6 py-3 text-left text-xs font-medium text-slate-400 uppercase tracking-wider cursor-pointer hover:bg-slate-700 group-hover">20-Day RS % <span id="sort-rs_momentum-${safeGroup}" class="opacity-0 inline-block w-4 text-center">↕</span></th>
+                                    <th onclick="sortTable('quadrant', '${group}')" class="px-6 py-3 text-left text-xs font-medium text-slate-400 uppercase tracking-wider cursor-pointer hover:bg-slate-700 group-hover">Status <span id="sort-quadrant-${safeGroup}" class="opacity-0 inline-block w-4 text-center">↕</span></th>
+                                </tr>
+                            </thead>
+                            <tbody class="divide-y divide-slate-700 text-sm">
+                `;
+                
+                groupData.forEach(s => {
+                    const cmfClass = s.cmf > 0 ? 'text-emerald-400' : 'text-red-400';
+                    const rsClass = s.rs_momentum > 0 ? 'text-emerald-400' : 'text-red-400';
+                    
+                    html += `
+                                <tr class="hover:bg-slate-700/50 transition-colors">
+                                    <td class="px-6 py-4 whitespace-nowrap text-slate-200 font-medium">${s.name}</td>
+                                    <td class="px-6 py-4 whitespace-nowrap text-slate-400">${s.symbol}</td>
+                                    <td class="px-6 py-4 whitespace-nowrap font-mono ${cmfClass}">${s.cmf > 0 ? '+' : ''}${s.cmf}</td>
+                                    <td class="px-6 py-4 whitespace-nowrap font-mono ${rsClass}">${s.rs_momentum > 0 ? '+' : ''}${s.rs_momentum}%</td>
+                                    <td class="px-6 py-4 whitespace-nowrap">
+                                        <span class="px-3 py-1 inline-flex text-xs leading-5 font-semibold rounded-full 
+                                            ${s.color === 'green' ? 'bg-emerald-900 text-emerald-300' : 
+                                              s.color === 'red' ? 'bg-red-900 text-red-300' : 
+                                              s.color === 'orange' ? 'bg-orange-900 text-orange-300' : 
+                                              'bg-yellow-900 text-yellow-300'}">
+                                            ${s.quadrant}
+                                        </span>
+                                    </td>
+                                </tr>
+                    `;
+                });
+                
+                html += `
+                            </tbody>
+                        </table>
+                    </div>
+                </section>
                 `;
             });
-            tbody.innerHTML = html;
+            
+            container.innerHTML = html;
+            
+            // Update sort indicators
+            if (currentSort.group) {
+                const groupSafe = currentSort.group.replace(/\s+/g, '').replace(/[^a-zA-Z0-9]/g, '');
+                const activeSortEl = document.getElementById(`sort-${currentSort.column}-${groupSafe}`);
+                if (activeSortEl) {
+                    activeSortEl.className = 'opacity-100 inline-block w-4 text-center text-blue-400';
+                    activeSortEl.innerHTML = currentSort.asc ? '↑' : '↓';
+                }
+            }
         }
 
         function renderChart(sectors) {

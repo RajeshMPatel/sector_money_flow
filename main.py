@@ -9,30 +9,43 @@ from fastapi.responses import HTMLResponse
 app = FastAPI()
 app.mount("/static", StaticFiles(directory="static"), name="static")
 
-SECTORS = {
-    'XLK': 'Technology',
-    'XLF': 'Financials',
-    'XLE': 'Energy',
-    'XLY': 'Consumer Discretionary',
-    'XLP': 'Consumer Staples',
-    'XLV': 'Health Care',
-    'XLI': 'Industrials',
-    'XLB': 'Materials',
-    'XLRE': 'Real Estate',
-    'XLU': 'Utilities',
-    'XLC': 'Communication Services',
-    'ITA': 'Aerospace & Defense',
-    'SMH': 'Semiconductors',
-    'IBB': 'Biotechnology',
-    'XHB': 'Homebuilders',
-    'XRT': 'Retail',
-    'KRE': 'Regional Banks',
-    'IYT': 'Transportation',
-    'TLT': '20+ Year Treasury Bonds',
-    'AGG': 'Core US Aggregate Bonds',
-    'LQD': 'Investment Grade Corp Bonds',
-    'GLD': 'Gold (Physical)'
+ASSET_CLASSES = {
+    'Equities - Core Sectors': {
+        'XLK': 'Technology',
+        'XLF': 'Financials',
+        'XLE': 'Energy',
+        'XLY': 'Consumer Discretionary',
+        'XLP': 'Consumer Staples',
+        'XLV': 'Health Care',
+        'XLI': 'Industrials',
+        'XLB': 'Materials',
+        'XLRE': 'Real Estate',
+        'XLU': 'Utilities',
+        'XLC': 'Communication Services',
+    },
+    'Equities - Sub-Sectors': {
+        'SMH': 'Semiconductors',
+        'ITA': 'Aerospace & Defense',
+        'XHB': 'Homebuilders',
+        'XRT': 'Retail',
+        'KRE': 'Regional Banks',
+        'IYT': 'Transportation'
+    },
+    'Fixed Income': {
+        'TLT': '20+ Year Treasuries (Safe Haven)',
+        'HYG': 'High Yield Corp Bonds (Credit Risk)',
+    },
+    'Commodities': {
+        'GLD': 'Gold (Safe Haven)',
+        'CPER': 'Copper (Industrial Demand)'
+    }
 }
+
+SECTORS = {}
+for group, assets in ASSET_CLASSES.items():
+    for symbol, name in assets.items():
+        SECTORS[symbol] = {'name': name, 'group': group}
+
 TICKERS = list(SECTORS.keys()) + ['SPY']
 
 # Directory to store our incremental CSV files
@@ -168,7 +181,9 @@ def get_data():
     except Exception as e:
         return {"error": f"Failed to fetch baseline SPY data: {e}"}
         
-    for symbol, name in SECTORS.items():
+    for symbol, info in SECTORS.items():
+        name = info['name']
+        group = info['group']
         try:
             sector_df = fetch_yahoo_finance(symbol)
             
@@ -213,6 +228,7 @@ def get_data():
             results.append({
                 "symbol": symbol,
                 "name": name,
+                "group": group,
                 "cmf": round(current_cmf, 4),
                 "rs_momentum": round(rs_pct_change, 2),
                 "quadrant": quadrant,
