@@ -45,7 +45,15 @@ pip install -r requirements.txt
 ```
 
 ### 3. Add your FRED API Key
-Export your API key to your environment variables so the script can access it:
+**What is FRED?**
+FRED (Federal Reserve Economic Data) is a massive online database of economic time-series data maintained by the Federal Reserve Bank of St. Louis. This project uses it to pull critical macro-economic indicators like Treasury Yields and Credit Spreads to provide context on the broader market environment.
+
+**How to get a key:**
+1. Go to the [FRED API website](https://fred.stlouisfed.org/docs/api/api_key.html).
+2. Create a free user account (or log in).
+3. Request an API key. It is instantly generated and 100% free.
+
+Once you have your key, export it to your environment variables so the script can access it:
 ```bash
 export FRED_API_KEY="your_actual_api_key_here"
 ```
